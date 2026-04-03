@@ -104,31 +104,60 @@ if not df.empty:
     tab1, tab2 = st.tabs(["Valuation Bands", "Market Scatter"])
     
     with tab1:
-        st.subheader("Price vs 5-Year PBR Band")
+        st.subheader("Price vs Historical PBR Bands")
         # Plotly Chart
         fig_pbr = go.Figure()
         
-        # Price
-        fig_pbr.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='white', width=2)))
+        # Colors for bands (Vivid and distinct)
+        colors = ['#ef553b', '#00cc96', '#ab63fa', '#ffa15a', '#19d3f3', '#ff6692']
         
         # Bands
-        if 'Price_PBR_High' in df.columns:
-            fig_pbr.add_trace(go.Scatter(x=df.index, y=df['Price_PBR_High'], mode='lines', name='PBR High', line=dict(color='red', dash='dot')))
-            fig_pbr.add_trace(go.Scatter(x=df.index, y=df['Price_PBR_Mid'], mode='lines', name='PBR Mid', line=dict(color='yellow', dash='dot')))
-            fig_pbr.add_trace(go.Scatter(x=df.index, y=df['Price_PBR_Low'], mode='lines', name='PBR Low', line=dict(color='green', dash='dot')))
+        pbr_cols = [c for c in df.columns if c.startswith('Price_PBR_')]
+        # Sort to ensure lowest multiple is drawn first
+        pbr_cols.sort(key=lambda x: float(x.replace('Price_PBR_', '')))
+        
+        for i, col in enumerate(pbr_cols):
+            multiple = col.replace('Price_PBR_', '')
+            fig_pbr.add_trace(go.Scatter(
+                x=df.index, y=df[col], mode='lines', 
+                name=f'{multiple}배', 
+                line=dict(color=colors[i % len(colors)], width=1.5, dash='solid')
+            ))
             
-        fig_pbr.update_layout(template="plotly_dark", hovermode="x unified", height=500, title="PBR Band Chart")
+        # Price (Plot last to keep on top)
+        fig_pbr.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#1f77b4', width=3.5)))
+        
+        # Y-axis scaling trick: Bound Y-axis slightly around price to prevent extreme multiples from flattening the chart
+        max_price = df['종가'].max()
+        min_price = df['종가'].min()
+        fig_pbr.update_layout(
+            template="plotly_dark", 
+            yaxis=dict(range=[min_price * 0.4, max_price * 1.6]),
+            hovermode="x unified", height=500, title="PBR Band Chart (Fixed Multiples)"
+        )
         st.plotly_chart(fig_pbr, use_container_width=True)
         
-        st.subheader("Price vs 5-Year PER Band")
+        st.subheader("Price vs Historical PER Bands")
         fig_per = go.Figure()
-        fig_per.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='white', width=2)))
-        if 'Price_PER_High' in df.columns:
-            fig_per.add_trace(go.Scatter(x=df.index, y=df['Price_PER_High'], mode='lines', name='PER High', line=dict(color='red', dash='dot')))
-            fig_per.add_trace(go.Scatter(x=df.index, y=df['Price_PER_Mid'], mode='lines', name='PER Mid', line=dict(color='yellow', dash='dot')))
-            fig_per.add_trace(go.Scatter(x=df.index, y=df['Price_PER_Low'], mode='lines', name='PER Low', line=dict(color='green', dash='dot')))
+        
+        per_cols = [c for c in df.columns if c.startswith('Price_PER_')]
+        per_cols.sort(key=lambda x: float(x.replace('Price_PER_', '')))
+        
+        for i, col in enumerate(per_cols):
+            multiple = col.replace('Price_PER_', '')
+            fig_per.add_trace(go.Scatter(
+                x=df.index, y=df[col], mode='lines', 
+                name=f'{multiple}배', 
+                line=dict(color=colors[i % len(colors)], width=1.5, dash='solid')
+            ))
             
-        fig_per.update_layout(template="plotly_dark", hovermode="x unified", height=500, title="PER Band Chart")
+        fig_per.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#1f77b4', width=3.5)))
+        
+        fig_per.update_layout(
+            template="plotly_dark", 
+            yaxis=dict(range=[min_price * 0.4, max_price * 1.6]),
+            hovermode="x unified", height=500, title="PER Band Chart (Fixed Multiples)"
+        )
         st.plotly_chart(fig_per, use_container_width=True)
         
         st.subheader("Latest Financials")

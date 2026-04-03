@@ -16,39 +16,51 @@ def process_ticker_data(ohlcv_df: pd.DataFrame, fund_df: pd.DataFrame) -> pd.Dat
     
     return df
 
+def get_nice_multiples(series, num_bands=4):
+    """
+    Extract perfectly spaced rounded multiples based on historical distributions.
+    Removes extreme outliers by using 5th and 95th percentiles.
+    """
+    if series.empty or series.dropna().empty:
+        return []
+    
+    q_min = series.quantile(0.05)
+    q_max = series.quantile(0.95)
+    
+    if q_min == q_max:
+        return [round(q_min, 2)]
+        
+    step = (q_max - q_min) / (num_bands - 1)
+    multiples = [q_min + i * step for i in range(num_bands)]
+    
+    if q_max > 10:
+        # For PER, round to 1 decimal place
+        rounded = [round(m, 1) for m in multiples]
+    else:
+        # For PBR, round to 2 decimal places
+        rounded = [round(m, 2) for m in multiples]
+        
+    # Ensure uniqueness
+    return sorted(list(set(rounded)))
+
 def calculate_bands(df: pd.DataFrame, window_years=5):
     """
-    주어진 데이터 프레임에서 고평가, 저평가 판단을 위한 PER/PBR 통계적 밴드(최저, 평균, 최고) 산출.
+    고평가, 저평가 판단을 위한 PER/PBR 통계적 고정 밴드 산출.
+    동적 Trailing 방식 대신 전체 기간의 분위수(Quantiles)를 활용해 부드럽고 가독성 높은 차트를 그림.
     """
     if df.empty:
         return df
 
-    # 일별 BPS와 EPS가 존재함
-    # 종가 / PER = EPS, 종가 / PBR = BPS (이론상). pykrx에서 바로 제공해줌.
-    
-    # 5년치 롤링(Rolling) 밴드를 구하거나 10년 전체 평균 밴드를 구함.
-    # 여기서는 "과거 5년치 데이터를 분석하여 PER/PBR의 최저, 평균, 최고 배수를 산출" 조건 적용
-    window_days = 252 * window_years # 주식시장 1년 개장일 대략 252일
-    
-    df['PER_High'] = df['PER'].rolling(window=window_days, min_periods=window_days//2).max()
-    df['PER_Mid'] = df['PER'].rolling(window=window_days, min_periods=window_days//2).mean()
-    df['PER_Low'] = df['PER'].rolling(window=window_days, min_periods=window_days//2).min()
-    
-    df['PBR_High'] = df['PBR'].rolling(window=window_days, min_periods=window_days//2).max()
-    df['PBR_Mid'] = df['PBR'].rolling(window=window_days, min_periods=window_days//2).mean()
-    df['PBR_Low'] = df['PBR'].rolling(window=window_days, min_periods=window_days//2).min()
-
-    # 상단/하단 가격 밴드 산출
-    # 고평가 주가 = BPS * 최고 PBR 배수
-    # 저평가 주가 = BPS * 최저 PBR 배수
-    if 'BPS' in df.columns:
-        df['Price_PBR_High'] = df['BPS'] * df['PBR_High']
-        df['Price_PBR_Mid'] = df['BPS'] * df['PBR_Mid']
-        df['Price_PBR_Low'] = df['BPS'] * df['PBR_Low']
-        
-    if 'EPS' in df.columns:
-        df['Price_PER_High'] = df['EPS'] * df['PER_High']
-        df['Price_PER_Mid'] = df['EPS'] * df['PER_Mid']
-        df['Price_PER_Low'] = df['EPS'] * df['PER_Low']
+    # PBR 밴드 산출
+    if 'PBR' in df.columns and 'BPS' in df.columns:
+        pbr_multiples = get_nice_multiples(df['PBR'], num_bands=4)
+        for m in pbr_multiples:
+            df[f'Price_PBR_{m}'] = df['BPS'] * m
+            
+    # PER 밴드 산출
+    if 'PER' in df.columns and 'EPS' in df.columns:
+        per_multiples = get_nice_multiples(df['PER'], num_bands=4)
+        for m in per_multiples:
+            df[f'Price_PER_{m}'] = df['EPS'] * m
 
     return df

@@ -53,8 +53,8 @@ def is_update_needed(ticker: str) -> bool:
                 return True
             return False
             
-        except sqlite3.OperationalError:
-            # 테이블이 존재하지 않는 경우
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
+            # 테이블이 존재하지 않거나 오류시 업데이트 필요
             return True
 
 def save_ticker_data(ticker: str, df: pd.DataFrame):
@@ -75,7 +75,7 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
         try:
             df = pd.read_sql(f"SELECT * FROM ticker_{ticker}", conn, index_col='날짜', parse_dates=['날짜'])
             return df
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
             return pd.DataFrame()
 
 def save_market_list(df: pd.DataFrame, market="KOSPI"):
@@ -88,5 +88,5 @@ def load_market_list(market="KOSPI") -> pd.DataFrame:
     with get_db_connection() as conn:
         try:
             return pd.read_sql(f"SELECT * FROM market_list_{market}", conn, index_col='티커')
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
             return pd.DataFrame()
