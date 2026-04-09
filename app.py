@@ -216,30 +216,93 @@ elif menu_sel == "Market Sectors":
     sector_data = load_sector_and_ytd(market_sel)
 
     if not sector_data.empty:
-        # 1. 시가총액 기반 섹터별 비중 파이 차트
+        # 1. 시가총액 기반 섹터별 비중 파이 차트 (가독성 개선)
         sector_weights = sector_data.groupby('업종명')['시가총액'].sum().reset_index()
         sector_weights = sector_weights[sector_weights['시가총액'] > 0]
         
-        # Sort by weight
-        sector_weights = sector_weights.sort_values(by='시가총액', ascending=False)
+        # 1% 미만 비중의 섹터는 '기타(Others)'로 묶기
+        total_market_cap = sector_weights['시가총액'].sum()
+        sector_weights['비중'] = sector_weights['시가총액'] / total_market_cap * 100
+        sector_weights.loc[sector_weights['비중'] < 1.5, '업종명'] = '기타(Others)'
         
+        # 재집계 및 정렬
+        sector_weights_agg = sector_weights.groupby('업종명')['시가총액'].sum().reset_index()
+        sector_weights_agg = sector_weights_agg.sort_values(by='시가총액', ascending=False)
+        
+        # '기타(Others)'를 맨 뒤로 보내기 위한 로직
+        others_mask = sector_weights_agg['업종명'] == '기타(Others)'
+        others_df = sector_weights_agg[others_mask]
+        main_df = sector_weights_agg[~others_mask]
+        sector_weights_agg = pd.concat([main_df, others_df])
+        
+        st.subheader(f"🥧 {market_sel} 섹터별 비중 (Top Sectors)")
         fig_pie = px.pie(
-            sector_weights, 
+            sector_weights_agg, 
             values='시가총액', 
             names='업종명', 
-            title=f"{market_sel} 섹터별 시가총액 비중",
             hole=0.4
         )
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        fig_pie.update_layout(template="plotly_dark", height=500)
+        fig_pie.update_layout(template="plotly_dark", height=450, margin=dict(t=30, b=30, l=10, r=10))
         st.plotly_chart(fig_pie, use_container_width=True)
         
-        # 2. 섹터 선택 드롭다운
-        st.subheader("섹터별 종목 리스트")
-        sector_list = sector_weights['업종명'].tolist()
+        # 2. YTD Heatmap (Treemap)
+        st.subheader("🟩🟥 YTD Sector Heatmap (Treemap)")
+        st.markdown("전체 시장의 종목 시가총액(크기)과 연초 대비 수익률(색상)을 한눈에 파악하세요.")
+        
+        heatmap_data = sector_data.copy()
+        heatmap_data = heatmap_data[heatmap_data['시가총액'] > 0]
+        
+        if 'YTD(%)' in heatmap_data.columns:
+            heatmap_data['YTD(%)'] = heatmap_data['YTD(%)'].fillna(0)
+            # Clip extreme values for better color scaling visually
+            heatmap_data['YTD_Color'] = heatmap_data['YTD(%)'].clip(lower=-30, upper=30)
+            
+            # Custom Color Scale (Blue: -30%, Gray: 0%, Red: +30%)
+            kor_scale = [
+                (0.0, '#2b64d1'), # Blue
+                (0.5, '#40444d'), # Dark Gray (near zero)
+                (1.0, '#f23a47')  # Red
+            ]
+            
+            fig_tree = px.treemap(
+                heatmap_data, 
+                path=[px.Constant(market_sel), '업종명', '종목명'], 
+                values='시가총액',
+                color='YTD_Color',
+                color_continuous_scale=kor_scale,
+                color_continuous_midpoint=0,
+                hover_data=['YTD(%)', '종가']
+            )
+            # Add YTD percentage string into each box and adjust fonts
+            fig_tree.update_traces(
+                texttemplate="<b>%{label}</b><br>%{customdata[0]:+.2f}%",
+                textposition="middle center",
+                textfont=dict(color="white", size=14),
+                hovertemplate='<b>%{label}</b><br>시가총액: ₩%{value:,.0f}<br>YTD: %{customdata[0]:+.2f}%<br>종가: ₩%{customdata[1]:,.0f}'
+            )
+        else:
+            # Fallback if YTD fails
+            fig_tree = px.treemap(
+                heatmap_data, 
+                path=[px.Constant(market_sel), '업종명', '종목명'], 
+                values='시가총액'
+            )
+            
+        fig_tree.update_layout(template="plotly_dark", height=750, margin=dict(t=30, b=30, l=10, r=10))
+        st.plotly_chart(fig_tree, use_container_width=True)
+        
+        # 3. 섹터 선택 드롭다운 및 테이블
+        st.divider()
+        st.subheader("📊 섹터 상세 및 종목 리스트")
+        # For the selectbox, we use the raw un-agged weights so they can see ALL sectors
+        sector_weights_raw = sector_data.groupby('업종명')['시가총액'].sum().reset_index()
+        sector_weights_raw = sector_weights_raw.sort_values(by='시가총액', ascending=False)
+        sector_list = sector_weights_raw['업종명'].tolist()
+        
         selected_sector = st.selectbox("업종 선택", sector_list)
         
-        # 3. 해당 섹터의 종목 리스트 출력 (시가총액 순 정렬, 종목명, 주가, YTD 포함)
+        # 해당 섹터의 종목 리스트 출력 (시가총액 순 정렬, 종목명, 주가, YTD 포함)
         sector_stocks = sector_data[sector_data['업종명'] == selected_sector]
         sector_stocks = sector_stocks.sort_values(by='시가총액', ascending=False)
         
@@ -248,13 +311,18 @@ elif menu_sel == "Market Sectors":
         if 'YTD(%)' not in sector_stocks.columns:
             display_cols = ['종목명', '종가', '시가총액']
 
-        # Format numeric values
+        # Format numeric values implicitly via column config
         formatted_df = sector_stocks[display_cols].copy()
-        formatted_df['종가'] = formatted_df['종가'].apply(lambda x: f"₩{int(x):,}")
-        formatted_df['시가총액'] = formatted_df['시가총액'].apply(lambda x: f"₩{int(x):,}")
-        if 'YTD(%)' in formatted_df.columns:
-            formatted_df['YTD(%)'] = formatted_df['YTD(%)'].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A")
             
-        st.dataframe(formatted_df, use_container_width=True, hide_index=False)
+        st.dataframe(
+            formatted_df, 
+            use_container_width=True, 
+            hide_index=False,
+            column_config={
+                "종가": st.column_config.NumberColumn(format="₩%d"),
+                "시가총액": st.column_config.NumberColumn(format="₩%d"),
+                "YTD(%)": st.column_config.NumberColumn(format="%.2f%%")
+            }
+        )
     else:
         st.error(f"{market_sel} 시장의 섹터 데이터를 불러오지 못했습니다. 장 휴일이나 주말일 수 있습니다.")
