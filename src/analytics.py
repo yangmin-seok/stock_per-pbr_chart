@@ -53,14 +53,17 @@ def calculate_bands(df: pd.DataFrame, window_years=5):
 
     # PBR 밴드 산출
     if 'PBR' in df.columns and 'BPS' in df.columns:
-        pbr_multiples = get_nice_multiples(df['PBR'], num_bands=4)
+        pbr_multiples = get_nice_multiples(df['PBR'], num_bands=5)
+        # 계단식 차트를 부드러운 곡선으로 나타내기 위해 이동평균(Smoothing) 적용
+        smooth_bps = df['BPS'].rolling(window=60, min_periods=1).mean()
         for m in pbr_multiples:
-            df[f'Price_PBR_{m}'] = df['BPS'] * m
+            df[f'Price_PBR_{m}'] = smooth_bps * m
             
     # PER 밴드 산출
     if 'PER' in df.columns and 'EPS' in df.columns:
-        per_multiples = get_nice_multiples(df['PER'], num_bands=4)
+        per_multiples = get_nice_multiples(df['PER'], num_bands=5)
+        smooth_eps = df['EPS'].rolling(window=60, min_periods=1).mean()
         for m in per_multiples:
-            df[f'Price_PER_{m}'] = df['EPS'] * m
+            df[f'Price_PER_{m}'] = smooth_eps * m
 
     return df
