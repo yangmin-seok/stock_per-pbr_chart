@@ -211,7 +211,9 @@ if menu_sel == "Stock Valuation":
             )
             st.plotly_chart(fig_per, use_container_width=True)
             
-
+            st.subheader("Latest Financials")
+            st.dataframe(df[['종가', 'BPS', 'PER', 'PBR', 'EPS']].tail(5))
+            
             st.subheader("📋 FnGuide 기업실적분석 (Annual / Consensus)")
             if not detailed_fin_df.empty:
                 st.dataframe(detailed_fin_df, use_container_width=True)
