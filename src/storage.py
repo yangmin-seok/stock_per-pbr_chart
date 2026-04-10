@@ -90,3 +90,56 @@ def load_market_list(market="KOSPI") -> pd.DataFrame:
             return pd.read_sql(f"SELECT * FROM market_list_{market}", conn, index_col='티커')
         except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
             return pd.DataFrame()
+
+# --- Global Market / Macro Storage ---
+
+def save_market_scatter_data(market: str, df: pd.DataFrame, target_date: str):
+    with get_db_connection() as conn:
+        df['target_date'] = target_date
+        df.to_sql(f"market_scatter_{market}", conn, if_exists='replace', index=True, index_label='티커')
+
+def load_market_scatter_data(market: str, target_date: str) -> pd.DataFrame:
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame()
+    with get_db_connection() as conn:
+        try:
+            df = pd.read_sql(f"SELECT * FROM market_scatter_{market} WHERE target_date='{target_date}'", conn, index_col='티커')
+            if not df.empty:
+                df.drop(columns=['target_date'], inplace=True)
+            return df
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
+            return pd.DataFrame()
+
+def save_sector_ytd_data(market: str, df: pd.DataFrame, target_date: str):
+    with get_db_connection() as conn:
+        df['target_date'] = target_date
+        df.to_sql(f"sector_ytd_{market}", conn, if_exists='replace', index=True, index_label='티커')
+
+def load_sector_ytd_data(market: str, target_date: str) -> pd.DataFrame:
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame()
+    with get_db_connection() as conn:
+        try:
+            df = pd.read_sql(f"SELECT * FROM sector_ytd_{market} WHERE target_date='{target_date}'", conn, index_col='티커')
+            if not df.empty:
+                df.drop(columns=['target_date'], inplace=True)
+            return df
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
+            return pd.DataFrame()
+
+def save_macro_data(symbol: str, df: pd.DataFrame, max_date: str):
+    with get_db_connection() as conn:
+        table_name = f"macro_{symbol.replace('^', '').replace('=', '_').replace('/', '_')}"
+        df.to_sql(table_name, conn, if_exists='replace', index=True, index_label='Date')
+
+def load_macro_data(symbol: str) -> pd.DataFrame:
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame()
+    with get_db_connection() as conn:
+        table_name = f"macro_{symbol.replace('^', '').replace('=', '_').replace('/', '_')}"
+        try:
+            df = pd.read_sql(f"SELECT * FROM {table_name}", conn, index_col='Date', parse_dates=['Date'])
+            return df
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
+            return pd.DataFrame()
+

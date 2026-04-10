@@ -8,8 +8,18 @@ from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fet
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
 from src.macro import fetch_macro_data, MACRO_SYMBOLS, US_INDEX_SYMBOLS
+from src.data_agent import start_background_agent
+from src.storage import (load_market_scatter_data, save_market_scatter_data,
+                        load_sector_ytd_data, save_sector_ytd_data,
+                        load_macro_data, save_macro_data)
 
 st.set_page_config(page_title="Korean Stock Valuation Dashboard", layout="wide")
+
+@st.cache_resource
+def init_agent():
+    start_background_agent()
+    return True
+init_agent()
 
 # --- CSS Styling ---
 st.markdown("""
@@ -63,12 +73,19 @@ def load_and_process_stock(ticker: str):
 @st.cache_data(ttl=3600)
 def load_market_scatter(market: str):
     target_date = get_latest_market_date()
-    with st.spinner(f"Loading latest market fundamental data for {market}..."):
-        df = fetch_market_cap(target_date, market=market)
+    df = load_market_scatter_data(market, target_date)
+    if df.empty:
+        with st.spinner(f"Loading latest market fundamental data for {market}..."):
+            df = fetch_market_cap(target_date, market=market)
+            if not df.empty:
+                save_market_scatter_data(market, df, target_date)
+    
+    if not df.empty:
         # Filter realistic values
         df = df[(df['PER'] > 0) & (df['PER'] < 100)]
         df = df[(df['PBR'] > 0) & (df['PBR'] < 10)]
-        return df
+    return df
+
 
 # --- UI Setup ---
 st.title("📈 K-Stock Valuation Platform")
@@ -202,6 +219,10 @@ elif menu_sel == "Market Sectors":
     @st.cache_data(ttl=3600)
     def load_sector_and_ytd(market: str):
         target_date = get_latest_market_date()
+        df = load_sector_ytd_data(market, target_date)
+        if not df.empty:
+            return df
+            
         with st.spinner(f"Loading Sector & YTD data for {market}..."):
             sector_df = fetch_sector_classifications(target_date, market)
             ytd_df = fetch_ytd_returns(target_date, market)
@@ -211,8 +232,10 @@ elif menu_sel == "Market Sectors":
                 # ytd_df index is ticker. sector_df index is also ticker.
                 merged = sector_df.join(ytd_df[['등락률']], rsuffix='_YTD')
                 merged.rename(columns={'등락률_YTD': 'YTD(%)'}, inplace=True)
+                save_sector_ytd_data(market, merged, target_date)
                 return merged
             return sector_df # fallback
+
 
     sector_data = load_sector_and_ytd(market_sel)
 
