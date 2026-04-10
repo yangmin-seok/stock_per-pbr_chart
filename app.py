@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pykrx import stock
 
-from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns
+from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns, fetch_detailed_financials
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
 from src.macro import fetch_macro_data, MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS
@@ -137,6 +137,12 @@ if menu_sel == "Stock Valuation":
     if not df.empty:
         tab1, tab2 = st.tabs(["Valuation Bands", "Market Scatter"])
         
+        @st.cache_data(ttl=3600*24)
+        def load_detailed_financials(ticker: str):
+            return fetch_detailed_financials(ticker)
+        
+        detailed_fin_df = load_detailed_financials(selected_ticker)
+        
         with tab1:
             st.subheader("Price vs Historical PBR Bands")
             # Plotly Chart
@@ -207,6 +213,12 @@ if menu_sel == "Stock Valuation":
             
             st.subheader("Latest Financials")
             st.dataframe(df[['종가', 'BPS', 'PER', 'PBR', 'EPS']].tail(5))
+            
+            st.subheader("📋 FnGuide 기업실적분석 (Annual / Consensus)")
+            if not detailed_fin_df.empty:
+                st.dataframe(detailed_fin_df, use_container_width=True)
+            else:
+                st.warning("현재 종목의 상세 기업실적 데이터를 불러올 수 없습니다.")
             
         with tab2:
             st.subheader(f"Peer Comparison Scatter: {market_sel}")
