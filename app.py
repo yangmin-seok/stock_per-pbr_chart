@@ -7,7 +7,7 @@ from pykrx import stock
 from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
-from src.macro import fetch_macro_data, MACRO_SYMBOLS, US_INDEX_SYMBOLS
+from src.macro import fetch_macro_data, MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS
 from src.data_agent import start_background_agent
 from src.storage import (load_market_scatter_data, save_market_scatter_data,
                         load_sector_ytd_data, save_sector_ytd_data,
@@ -102,7 +102,7 @@ st.markdown("한국 주식 종목의 10년 치 PER / PBR 밴드 차트 및 업�
 
 # Sidebar
 st.sidebar.header("Navigation")
-menu_sel = st.sidebar.radio("Menu", ["Stock Valuation", "Market Sectors", "Macro Indicators", "US Indices"])
+menu_sel = st.sidebar.radio("Menu", ["Stock Valuation", "Market Sectors", "Macro Indicators", "Global Indices"])
 
 st.sidebar.header("Filter & Search")
 market_sel = st.sidebar.radio("Market", ["KOSPI", "KOSDAQ"])
@@ -460,12 +460,13 @@ elif menu_sel == "Macro Indicators":
             else:
                 st.error(f"{name} 데이터를 불러올 수 없습니다.")
 
-elif menu_sel == "US Indices":
-    st.header("🇺🇸 미국 주요 지수 (US Indices)")
-    st.markdown("S&P 500, 나스닥 지수의 현재 가격과 추이를 확인하세요.")
+elif menu_sel == "Global Indices":
+    st.header("🌐 국내/해외 주요 지수 (Global Indices)")
+    st.markdown("KOSPI, KOSDAQ, S&P 500, 그리고 나스닥 지수의 현재 가격과 10년 트렌드를 확인하세요.")
     
-    items = list(US_INDEX_SYMBOLS.items())
+    items = list(GLOBAL_INDEX_SYMBOLS.items())
     
+    # 4 columns for 4 indices
     cols = st.columns(len(items))
     for i, (name, symbol) in enumerate(items):
         with cols[i]:

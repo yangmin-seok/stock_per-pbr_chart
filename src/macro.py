@@ -13,7 +13,9 @@ MACRO_SYMBOLS = {
     "미국 10년물 국채": "^TNX"
 }
 
-US_INDEX_SYMBOLS = {
+GLOBAL_INDEX_SYMBOLS = {
+    "KOSPI": "^KS11",
+    "KOSDAQ": "^KQ11",
     "S&P 500": "^GSPC",
     "Nasdaq": "^IXIC"
 }

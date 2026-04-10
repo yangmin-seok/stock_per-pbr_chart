@@ -11,7 +11,7 @@ from src.storage import (get_latest_market_date, is_update_needed,
     save_macro_data, load_macro_data)
 from src.data import (get_target_date_range, fetch_ohlcv, fetch_fundamentals, 
     fetch_market_cap, fetch_sector_classifications, fetch_ytd_returns, fetch_tickers)
-from src.macro import MACRO_SYMBOLS, US_INDEX_SYMBOLS, fetch_macro_data
+from src.macro import MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS, fetch_macro_data
 
 import logging
 logger = logging.getLogger('data_agent')
@@ -23,7 +23,7 @@ logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").set
 logger.setLevel(logging.INFO)
 
 def update_macro_data():
-    all_symbols = {**MACRO_SYMBOLS, **US_INDEX_SYMBOLS}
+    all_symbols = {**MACRO_SYMBOLS, **GLOBAL_INDEX_SYMBOLS}
     target_date = get_latest_market_date()
     
     for name, symbol in all_symbols.items():
