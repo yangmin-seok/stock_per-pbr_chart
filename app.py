@@ -7,7 +7,7 @@ from pykrx import stock
 from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
-from src.macro import fetch_macro_data, MACRO_SYMBOLS
+from src.macro import fetch_macro_data, MACRO_SYMBOLS, US_INDEX_SYMBOLS
 
 st.set_page_config(page_title="Korean Stock Valuation Dashboard", layout="wide")
 
@@ -76,7 +76,7 @@ st.markdown("한국 주식 종목의 10년 치 PER / PBR 밴드 차트 및 업�
 
 # Sidebar
 st.sidebar.header("Navigation")
-menu_sel = st.sidebar.radio("Menu", ["Stock Valuation", "Market Sectors", "Macro Indicators"])
+menu_sel = st.sidebar.radio("Menu", ["Stock Valuation", "Market Sectors", "Macro Indicators", "US Indices"])
 
 st.sidebar.header("Filter & Search")
 market_sel = st.sidebar.radio("Market", ["KOSPI", "KOSDAQ"])
@@ -382,6 +382,50 @@ elif menu_sel == "Macro Indicators":
     for i in range(3, 5):
         with cols2[i-3]:
             name, symbol = items[i]
+            df = fetch_macro_data(symbol, years=10)
+            if not df.empty and len(df) >= 2:
+                current_price = df['Close'].iloc[-1]
+                prev_price = df['Close'].iloc[-2]
+                pct_change = (current_price - prev_price) / prev_price * 100
+                diff = current_price - prev_price
+                
+                # Metric
+                st.metric(label=name, value=f"{current_price:,.2f}", delta=f"{diff:+,.2f} ({pct_change:+.2f}%)")
+                
+                # Mini Sparkline chart (last 90 days)
+                df_recent = df.last('90D')
+                color = '#00cc96' if pct_change >= 0 else '#ef553b'
+                fig_mini = go.Figure(go.Scatter(x=df_recent.index, y=df_recent['Close'], mode='lines', line=dict(color=color, width=2)))
+                fig_mini.update_layout(
+                    height=80, margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis=dict(visible=False, showgrid=False),
+                    yaxis=dict(visible=False, showgrid=False),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False, hovermode='x'
+                )
+                st.plotly_chart(fig_mini, use_container_width=True, config={'displayModeBar': False})
+                
+                with st.expander(f"📊 {name} 10년 트렌드 기록"):
+                    fig_full = go.Figure(go.Scatter(x=df.index, y=df['Close'], name=name, line=dict(color='#19d3f3')))
+                    fig_full.update_layout(
+                        template='plotly_dark',
+                        height=350, margin=dict(l=10, r=10, t=30, b=10),
+                        title=f"{name} (10-Year)",
+                        hovermode="x unified"
+                    )
+                    st.plotly_chart(fig_full, use_container_width=True)
+            else:
+                st.error(f"{name} 데이터를 불러올 수 없습니다.")
+
+elif menu_sel == "US Indices":
+    st.header("🇺🇸 미국 주요 지수 (US Indices)")
+    st.markdown("S&P 500, 나스닥 지수의 현재 가격과 추이를 확인하세요.")
+    
+    items = list(US_INDEX_SYMBOLS.items())
+    
+    cols = st.columns(len(items))
+    for i, (name, symbol) in enumerate(items):
+        with cols[i]:
             df = fetch_macro_data(symbol, years=10)
             if not df.empty and len(df) >= 2:
                 current_price = df['Close'].iloc[-1]

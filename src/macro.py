@@ -11,6 +11,11 @@ MACRO_SYMBOLS = {
     "미국 10년물 국채": "^TNX"
 }
 
+US_INDEX_SYMBOLS = {
+    "S&P 500": "^GSPC",
+    "Nasdaq": "^IXIC"
+}
+
 @st.cache_data(ttl=3600*12)
 def fetch_macro_data(symbol: str, years: int = 10) -> pd.DataFrame:
     """
