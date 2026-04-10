@@ -26,12 +26,21 @@ st.markdown("""
 <style>
     /* Dark mode optimized and sleek UI */
     .stApp {
-        background-color: #0f1115;
+        background-color: #0c0d12;
         color: #ffffff;
     }
     h1, h2, h3 {
         font-family: 'Inter', sans-serif;
-        color: #e0e6ed;
+        color: #ffffff;
+        font-weight: 700;
+    }
+    /* Add subtle gradient card look to metrics */
+    [data-testid="stMetric"] {
+        background: linear-gradient(145deg, #161821 0%, #0c0d12 100%);
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #232635;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -134,7 +143,8 @@ if menu_sel == "Stock Valuation":
             fig_pbr = go.Figure()
             
             # Colors for bands (Vivid and distinct)
-            colors = ['#ef553b', '#00cc96', '#ab63fa', '#ffa15a', '#19d3f3', '#ff6692']
+            colors = ['#ff6692', '#ab63fa', '#19d3f3', '#00cc96', '#ffa15a']
+            fill_colors = ['rgba(255,102,146,0.1)', 'rgba(171,99,250,0.15)', 'rgba(25,211,243,0.15)', 'rgba(0,204,150,0.15)', 'rgba(255,161,90,0.15)']
             
             # Bands
             pbr_cols = [c for c in df.columns if c.startswith('Price_PBR_')]
@@ -146,18 +156,23 @@ if menu_sel == "Stock Valuation":
                 fig_pbr.add_trace(go.Scatter(
                     x=df.index, y=df[col], mode='lines', 
                     name=f'{multiple}배', 
-                    line=dict(color=colors[i % len(colors)], width=1.5, dash='solid')
+                    line=dict(color=colors[i % len(colors)], width=2.5, dash='solid'),
+                    fill='tonexty' if i > 0 else 'none',
+                    fillcolor=fill_colors[i % len(fill_colors)] if i > 0 else 'rgba(0,0,0,0)'
                 ))
                 
-            # Price (Plot last to keep on top)
-            fig_pbr.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#1f77b4', width=3.5)))
+            # Price (Plot last to keep on top, thick white/blue line)
+            fig_pbr.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#ffffff', width=3.5)))
             
             # Y-axis scaling trick: Bound Y-axis slightly around price to prevent extreme multiples from flattening the chart
             max_price = df['종가'].max()
             min_price = df['종가'].min()
             fig_pbr.update_layout(
                 template="plotly_dark", 
-                yaxis=dict(range=[min_price * 0.4, max_price * 1.6]),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis=dict(range=[min_price * 0.4, max_price * 1.6], showgrid=True, gridcolor='#232635'),
+                xaxis=dict(showgrid=True, gridcolor='#232635'),
                 hovermode="x unified", height=500, title="PBR Band Chart (Fixed Multiples)"
             )
             st.plotly_chart(fig_pbr, use_container_width=True)
@@ -173,14 +188,19 @@ if menu_sel == "Stock Valuation":
                 fig_per.add_trace(go.Scatter(
                     x=df.index, y=df[col], mode='lines', 
                     name=f'{multiple}배', 
-                    line=dict(color=colors[i % len(colors)], width=1.5, dash='solid')
+                    line=dict(color=colors[i % len(colors)], width=2.5, dash='solid'),
+                    fill='tonexty' if i > 0 else 'none',
+                    fillcolor=fill_colors[i % len(fill_colors)] if i > 0 else 'rgba(0,0,0,0)'
                 ))
                 
-            fig_per.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#1f77b4', width=3.5)))
+            fig_per.add_trace(go.Scatter(x=df.index, y=df['종가'], mode='lines', name='Price', line=dict(color='#ffffff', width=3.5)))
             
             fig_per.update_layout(
                 template="plotly_dark", 
-                yaxis=dict(range=[min_price * 0.4, max_price * 1.6]),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                yaxis=dict(range=[min_price * 0.4, max_price * 1.6], showgrid=True, gridcolor='#232635'),
+                xaxis=dict(showgrid=True, gridcolor='#232635'),
                 hovermode="x unified", height=500, title="PER Band Chart (Fixed Multiples)"
             )
             st.plotly_chart(fig_per, use_container_width=True)
