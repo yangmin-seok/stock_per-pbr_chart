@@ -6,6 +6,9 @@ from pytz import timezone
 
 DB_PATH = "stock_data.sqlite"
 
+# 섹터/트리맵 수익률 저장 로직이 바뀌면 올려서 SQLite·Streamlit 캐시를 무효화한다.
+SECTOR_YTD_CACHE_VERSION = 3
+
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
 
@@ -174,17 +177,29 @@ def load_market_scatter_data(market: str, target_date: str) -> pd.DataFrame:
 
 def save_sector_ytd_data(market: str, df: pd.DataFrame, target_date: str):
     with get_db_connection() as conn:
-        df['target_date'] = target_date
-        df.to_sql(f"sector_ytd_{market}", conn, if_exists='replace', index=True, index_label='티커')
+        out = df.copy()
+        out["target_date"] = target_date
+        out["_cache_ver"] = SECTOR_YTD_CACHE_VERSION
+        out.to_sql(f"sector_ytd_{market}", conn, if_exists="replace", index=True, index_label="티커")
 
 def load_sector_ytd_data(market: str, target_date: str) -> pd.DataFrame:
     if not os.path.exists(DB_PATH):
         return pd.DataFrame()
     with get_db_connection() as conn:
         try:
-            df = pd.read_sql(f"SELECT * FROM sector_ytd_{market} WHERE target_date='{target_date}'", conn, index_col='티커')
-            if not df.empty:
-                df.drop(columns=['target_date'], inplace=True)
+            df = pd.read_sql(
+                f"SELECT * FROM sector_ytd_{market} WHERE target_date='{target_date}'",
+                conn,
+                index_col="티커",
+            )
+            if df.empty:
+                return df
+            if "_cache_ver" not in df.columns:
+                return pd.DataFrame()
+            ver = pd.to_numeric(df["_cache_ver"].iloc[0], errors="coerce")
+            if ver != SECTOR_YTD_CACHE_VERSION:
+                return pd.DataFrame()
+            df = df.drop(columns=["target_date", "_cache_ver"])
             return df
         except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
             return pd.DataFrame()

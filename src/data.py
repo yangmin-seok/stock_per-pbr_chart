@@ -60,26 +60,33 @@ def fetch_ytd_returns(target_date: str, market="KOSPI"):
 _KRX_CALENDAR_TICKER = "005930"
 
 
-def get_prev_krx_trading_day(target_date: str):
-    """target_date 직전 KRX 영업일(YYYYMMDD). 실패 시 None."""
+def get_krx_trading_day_pair_for_daily_return(target_date: str):
+    """전일 대비(1거래일) 수익률용: (직전 영업일, 마지막 영업일) YYYYMMDD.
+
+    마지막 영업일은 **삼성전자 OHLCV 기준** target_date 이하 중 가장 늦은 장 세션이다.
+    장 데이터가 target_date보다 늦게 반영되면 last < target가 되며, 이때도 구간을
+    (직전날→last)로 두어 pykrx 등락률이 여러 거래일로 누적되지 않게 한다.
+    """
     try:
         dt_end = pd.Timestamp(datetime.strptime(target_date, "%Y%m%d"))
     except (TypeError, ValueError):
-        return None
+        return None, None
     start = (dt_end - pd.Timedelta(days=21)).strftime("%Y%m%d")
     try:
         cal = stock.get_market_ohlcv_by_date(start, target_date, _KRX_CALENDAR_TICKER)
     except Exception:
-        return None
+        return None, None
     time.sleep(0.5)
     if cal is None or cal.empty:
-        return None
+        return None, None
     idx = pd.DatetimeIndex(pd.to_datetime(cal.index)).tz_localize(None).normalize()
     end_norm = dt_end.normalize()
     valid = idx[idx <= end_norm]
     if len(valid) < 2:
-        return None
-    return valid[-2].strftime("%Y%m%d")
+        return None, None
+    prev_day = valid[-2].strftime("%Y%m%d")
+    last_day = valid[-1].strftime("%Y%m%d")
+    return prev_day, last_day
 
 
 SECTOR_HEATMAP_RETURN_COLUMNS = ("RET_1D", "RET_1M", "RET_3M", "YTD(%)")
@@ -90,13 +97,16 @@ def fetch_multi_horizon_returns(target_date: str, market: str = "KOSPI") -> pd.D
     series_parts = []
     dt = pd.Timestamp(datetime.strptime(target_date, "%Y%m%d"))
 
-    prev = get_prev_krx_trading_day(target_date)
-    if prev and prev != target_date:
+    # 전일 대비: 기간 조회(get_market_price_change_by_ticker) 등락률은 구간 누적에 가깝게 나올 수 있어,
+    # 해당 영업일 스냅샷의 등락률(get_market_ohlcv_by_ticker)을 사용한다.
+    _, last_td = get_krx_trading_day_pair_for_daily_return(target_date)
+    if last_td:
         try:
-            d = stock.get_market_price_change_by_ticker(prev, target_date, market=market)
+            d = stock.get_market_ohlcv_by_ticker(last_td, market=market, alternative=False)
             time.sleep(0.5)
             if not d.empty and "등락률" in d.columns:
-                series_parts.append(d["등락률"].rename("RET_1D"))
+                r1d = pd.to_numeric(d["등락률"], errors="coerce").rename("RET_1D")
+                series_parts.append(r1d)
         except Exception:
             pass
 

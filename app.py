@@ -21,7 +21,8 @@ from src.macro import fetch_macro_data, MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS
 from src.data_agent import start_background_agent
 from src.storage import (load_market_scatter_data, save_market_scatter_data,
                         load_sector_ytd_data, save_sector_ytd_data,
-                        load_macro_data, save_macro_data)
+                        load_macro_data, save_macro_data,
+                        SECTOR_YTD_CACHE_VERSION)
 
 st.set_page_config(page_title="Korean Stock Valuation Dashboard", layout="wide")
 
@@ -300,7 +301,7 @@ elif menu_sel == "Market Sectors":
     st.markdown("전체 시장의 업종별 비중과 시가총액 순 종목을 확인하세요.")
 
     @st.cache_data(ttl=3600)
-    def load_sector_and_ytd(market: str):
+    def load_sector_and_ytd(market: str, _sector_cache_ver: int):
         target_date = get_latest_market_date()
         df = load_sector_ytd_data(market, target_date)
         if not df.empty and set(SECTOR_HEATMAP_RETURN_COLUMNS).issubset(df.columns):
@@ -320,7 +321,7 @@ elif menu_sel == "Market Sectors":
             return sector_df
 
 
-    sector_data = load_sector_and_ytd(market_sel)
+    sector_data = load_sector_and_ytd(market_sel, SECTOR_YTD_CACHE_VERSION)
 
     if not sector_data.empty:
         # 1. 시가총액 기반 섹터별 비중 파이 차트 (가독성 개선)
