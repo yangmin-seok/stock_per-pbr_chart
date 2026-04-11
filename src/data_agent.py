@@ -8,9 +8,11 @@ from src.storage import (get_latest_market_date, is_update_needed,
     save_ticker_data, load_market_list, save_market_list,
     save_market_scatter_data, load_market_scatter_data,
     save_sector_ytd_data, load_sector_ytd_data,
-    save_macro_data, load_macro_data)
-from src.data import (get_target_date_range, fetch_ohlcv, fetch_fundamentals, 
-    fetch_market_cap, fetch_sector_classifications, fetch_ytd_returns, fetch_tickers)
+    save_macro_data, load_macro_data,
+    is_wisereport_financials_stale, save_wisereport_financials)
+from src.data import (get_target_date_range, fetch_ohlcv, fetch_fundamentals,
+    fetch_market_cap, fetch_sector_classifications, fetch_ytd_returns, fetch_tickers,
+    fetch_detailed_financials)
 from src.macro import MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS, fetch_macro_data
 
 import logging
@@ -93,7 +95,22 @@ def update_individual_tickers():
                         save_ticker_data(ticker, df)
                 except Exception as e:
                     logger.error(f"Failed to update ticker {ticker}: {e}")
-                    
+
+                if is_wisereport_financials_stale(ticker):
+                    try:
+                        fin_df = fetch_detailed_financials(ticker)
+                        if not fin_df.empty:
+                            save_wisereport_financials(ticker, fin_df)
+                            logger.info(
+                                "Background Update: Saved WiseReport fin detail for %s",
+                                ticker,
+                            )
+                    except Exception as e:
+                        logger.error(
+                            "Failed WiseReport fin detail for %s: %s", ticker, e
+                        )
+                    time.sleep(2.0)
+
                 # Sleep to prevent pykrx IP bans
                 time.sleep(1.0)
 

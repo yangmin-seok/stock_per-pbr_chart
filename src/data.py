@@ -6,6 +6,7 @@ import re
 from io import StringIO
 from pykrx import stock
 from .auth import install_pykrx_session_wrappers
+from .storage import load_wisereport_financials, save_wisereport_financials
 # 적용
 install_pykrx_session_wrappers()
 
@@ -111,3 +112,14 @@ def fetch_detailed_financials(ticker: str) -> pd.DataFrame:
         import logging
         logging.error(f"Financial fetch error for {ticker}: {e}")
         return pd.DataFrame()
+
+
+def get_detailed_financials(ticker: str) -> pd.DataFrame:
+    """DB에 캐시된 WiseReport 실적이 있으면 사용하고, 없으면 네트워크에서 받아 저장 후 반환합니다."""
+    df = load_wisereport_financials(ticker)
+    if not df.empty:
+        return df
+    df = fetch_detailed_financials(ticker)
+    if not df.empty:
+        save_wisereport_financials(ticker, df)
+    return df

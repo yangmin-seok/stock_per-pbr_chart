@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pykrx import stock
 
-from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns, fetch_detailed_financials
+from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns, get_detailed_financials
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
 from src.macro import fetch_macro_data, MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS
@@ -137,9 +137,9 @@ if menu_sel == "Stock Valuation":
     if not df.empty:
         tab1, tab2 = st.tabs(["Valuation Bands", "Market Scatter"])
         
-        @st.cache_data(ttl=3600*24)
+        @st.cache_data(ttl=3600)
         def load_detailed_financials(ticker: str):
-            return fetch_detailed_financials(ticker)
+            return get_detailed_financials(ticker)
         
         detailed_fin_df = load_detailed_financials(selected_ticker)
         
@@ -181,7 +181,7 @@ if menu_sel == "Stock Valuation":
                 xaxis=dict(showgrid=True, gridcolor='#232635'),
                 hovermode="x unified", height=500, title="PBR Band Chart (Fixed Multiples)"
             )
-            st.plotly_chart(fig_pbr, use_container_width=True)
+            st.plotly_chart(fig_pbr, width='stretch')
             
             st.subheader("Price vs Historical PER Bands")
             fig_per = go.Figure()
@@ -209,14 +209,14 @@ if menu_sel == "Stock Valuation":
                 xaxis=dict(showgrid=True, gridcolor='#232635'),
                 hovermode="x unified", height=500, title="PER Band Chart (Fixed Multiples)"
             )
-            st.plotly_chart(fig_per, use_container_width=True)
+            st.plotly_chart(fig_per, width='stretch')
             
             st.subheader("Latest Financials")
             st.dataframe(df[['종가', 'BPS', 'PER', 'PBR', 'EPS']].tail(5))
             
             st.subheader("📋 FnGuide 기업실적분석 (Annual / Consensus)")
             if not detailed_fin_df.empty:
-                st.dataframe(detailed_fin_df, use_container_width=True)
+                st.dataframe(detailed_fin_df, width='stretch')
             else:
                 st.warning("현재 종목의 상세 기업실적 데이터를 불러올 수 없습니다.")
             
@@ -239,7 +239,7 @@ if menu_sel == "Stock Valuation":
                 title=f"Relative Valuation in {market_sel}"
             )
             fig_scatter.update_layout(template="plotly_dark")
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            st.plotly_chart(fig_scatter, width='stretch')
 
     else:
         st.error("데이터를 불러오지 못했습니다. (적자 기업이거나 데이터가 부족할 수 있습니다.)")
@@ -300,7 +300,7 @@ elif menu_sel == "Market Sectors":
         )
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
         fig_pie.update_layout(template="plotly_dark", height=450, margin=dict(t=30, b=30, l=10, r=10))
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width='stretch')
         
         # 2. YTD Heatmap (Treemap)
         st.subheader("🟩🟥 YTD Sector Heatmap (Treemap)")
@@ -346,7 +346,7 @@ elif menu_sel == "Market Sectors":
             )
             
         fig_tree.update_layout(template="plotly_dark", height=750, margin=dict(t=30, b=30, l=10, r=10))
-        st.plotly_chart(fig_tree, use_container_width=True)
+        st.plotly_chart(fig_tree, width='stretch')
         
         # 3. 섹터 선택 드롭다운 및 테이블
         st.divider()
@@ -372,7 +372,7 @@ elif menu_sel == "Market Sectors":
             
         st.dataframe(
             formatted_df, 
-            use_container_width=True, 
+            width='stretch', 
             hide_index=False,
             column_config={
                 "종가": st.column_config.NumberColumn(format="₩%d"),
@@ -416,7 +416,7 @@ elif menu_sel == "Macro Indicators":
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     showlegend=False, hovermode='x'
                 )
-                st.plotly_chart(fig_mini, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_mini, width='stretch', config={'displayModeBar': False})
                 
                 with st.expander(f"📊 {name} 10년 트렌드 기록"):
                     fig_full = go.Figure(go.Scatter(x=df.index, y=df['Close'], name=name, line=dict(color='#19d3f3')))
@@ -426,7 +426,7 @@ elif menu_sel == "Macro Indicators":
                         title=f"{name} (10-Year)",
                         hovermode="x unified"
                     )
-                    st.plotly_chart(fig_full, use_container_width=True)
+                    st.plotly_chart(fig_full, width='stretch')
             else:
                 st.error(f"{name} 데이터를 불러올 수 없습니다.")
 
@@ -458,7 +458,7 @@ elif menu_sel == "Macro Indicators":
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     showlegend=False, hovermode='x'
                 )
-                st.plotly_chart(fig_mini, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_mini, width='stretch', config={'displayModeBar': False})
                 
                 with st.expander(f"📊 {name} 10년 트렌드 기록"):
                     fig_full = go.Figure(go.Scatter(x=df.index, y=df['Close'], name=name, line=dict(color='#19d3f3')))
@@ -468,7 +468,7 @@ elif menu_sel == "Macro Indicators":
                         title=f"{name} (10-Year)",
                         hovermode="x unified"
                     )
-                    st.plotly_chart(fig_full, use_container_width=True)
+                    st.plotly_chart(fig_full, width='stretch')
             else:
                 st.error(f"{name} 데이터를 불러올 수 없습니다.")
 
@@ -503,7 +503,7 @@ elif menu_sel == "Global Indices":
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     showlegend=False, hovermode='x'
                 )
-                st.plotly_chart(fig_mini, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_mini, width='stretch', config={'displayModeBar': False})
                 
                 with st.expander(f"📊 {name} 10년 트렌드 기록"):
                     fig_full = go.Figure(go.Scatter(x=df.index, y=df['Close'], name=name, line=dict(color='#19d3f3')))
@@ -513,6 +513,6 @@ elif menu_sel == "Global Indices":
                         title=f"{name} (10-Year)",
                         hovermode="x unified"
                     )
-                    st.plotly_chart(fig_full, use_container_width=True)
+                    st.plotly_chart(fig_full, width='stretch')
             else:
                 st.error(f"{name} 데이터를 불러올 수 없습니다.")

@@ -78,6 +78,68 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
         except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
             return pd.DataFrame()
 
+
+def _ensure_wisereport_meta_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wisereport_fin_meta (
+            ticker TEXT PRIMARY KEY,
+            refreshed_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def is_wisereport_financials_stale(ticker: str, max_age_days: int = 7) -> bool:
+    """WiseReport 기업실적 캐시가 없거나 max_age_days보다 오래됐으면 True."""
+    if not os.path.exists(DB_PATH):
+        return True
+    with get_db_connection() as conn:
+        try:
+            _ensure_wisereport_meta_table(conn)
+            cur = conn.execute(
+                "SELECT refreshed_at FROM wisereport_fin_meta WHERE ticker = ?",
+                (ticker,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return True
+            refreshed = datetime.fromisoformat(row[0])
+            if datetime.now() - refreshed > timedelta(days=max_age_days):
+                return True
+            return False
+        except (sqlite3.OperationalError, ValueError, TypeError, Exception):
+            return True
+
+
+def save_wisereport_financials(ticker: str, df: pd.DataFrame) -> None:
+    """WiseReport 연간 실적 표(항목×기간)를 SQLite에 저장하고 메타 갱신 시각을 기록합니다."""
+    if df.empty:
+        return
+    with get_db_connection() as conn:
+        _ensure_wisereport_meta_table(conn)
+        out = df.reset_index()
+        out.to_sql(f"fin_wisereport_{ticker}", conn, if_exists="replace", index=False)
+        conn.execute(
+            "INSERT OR REPLACE INTO wisereport_fin_meta (ticker, refreshed_at) VALUES (?, ?)",
+            (ticker, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+
+
+def load_wisereport_financials(ticker: str) -> pd.DataFrame:
+    if not os.path.exists(DB_PATH):
+        return pd.DataFrame()
+    with get_db_connection() as conn:
+        try:
+            return pd.read_sql(
+                f"SELECT * FROM fin_wisereport_{ticker}",
+                conn,
+                index_col="항목",
+            )
+        except (sqlite3.OperationalError, pd.errors.DatabaseError, Exception):
+            return pd.DataFrame()
+
 def save_market_list(df: pd.DataFrame, market="KOSPI"):
     with get_db_connection() as conn:
         df.to_sql(f"market_list_{market}", conn, if_exists='replace', index=True, index_label='티커')
