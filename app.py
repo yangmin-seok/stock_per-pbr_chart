@@ -31,6 +31,47 @@ def init_agent():
     return True
 init_agent()
 
+
+def _format_market_cap_krw_jo_eok(value) -> str:
+    """원 단위 시가총액을 '1,219조 4,454억' 형식으로 표시."""
+    if pd.isna(value):
+        return "—"
+    try:
+        won = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "—"
+    if won <= 0:
+        return "—"
+    jo = won // 10**12
+    rem = won % 10**12
+    eok = rem // 10**8
+    parts = []
+    if jo > 0:
+        parts.append(f"{jo:,}조")
+    if eok > 0:
+        parts.append(f"{eok:,}억")
+    if not parts:
+        return f"{won:,}원"
+    return " ".join(parts)
+
+
+def _cap_weighted_mean_return(df: pd.DataFrame, cap_col: str, ret_col: str):
+    """시가총액 가중 평균 수익률(%). 유효 데이터가 없으면 None."""
+    if ret_col not in df.columns or cap_col not in df.columns:
+        return None
+    caps = pd.to_numeric(df[cap_col], errors="coerce")
+    rets = pd.to_numeric(df[ret_col], errors="coerce")
+    valid = caps.notna() & rets.notna() & (caps > 0)
+    if not valid.any():
+        return None
+    c = caps[valid]
+    r = rets[valid]
+    total = float(c.sum())
+    if total <= 0:
+        return None
+    return float((r * c).sum() / total)
+
+
 # --- CSS Styling ---
 st.markdown("""
 <style>
@@ -417,24 +458,51 @@ elif menu_sel == "Market Sectors":
         sector_stocks = sector_data[sector_data['업종명'] == selected_sector]
         sector_stocks = sector_stocks.sort_values(by='시가총액', ascending=False)
         
-        display_cols = ["종목명", "종가", "시가총액"]
-        table_ret_col = period_to_col[selected_period]
-        if table_ret_col in sector_stocks.columns:
-            display_cols.insert(2, table_ret_col)
+        sector_detail_ret_col = "YTD(%)"
+        sector_w_ret = _cap_weighted_mean_return(
+            sector_stocks, "시가총액", sector_detail_ret_col
+        )
+        if sector_w_ret is not None:
+            sign = "+" if sector_w_ret >= 0 else ""
+            st.markdown(
+                f"**{selected_sector}** 섹터 시가총액 가중 "
+                f"**{period_descriptions['YTD']}** 수익률: "
+                f"**{sign}{sector_w_ret:.2f}%**"
+            )
+        else:
+            st.caption(
+                "선택한 섹터의 **연초 대비** 가중 수익률을 계산할 수 없습니다. "
+                "(YTD 데이터 부족)"
+            )
 
-        formatted_df = sector_stocks[display_cols].copy()
+        list_df = sector_stocks.reset_index()
+        idx0 = list_df.columns[0]
+        list_df = list_df.rename(columns={idx0: "종목코드"})
+
+        display_cols = ["종목코드", "종목명", "종가"]
+        if sector_detail_ret_col in list_df.columns:
+            display_cols.append(sector_detail_ret_col)
+        display_cols.append("시가총액")
+
+        formatted_df = list_df[display_cols].copy()
+        formatted_df["시가총액"] = list_df["시가총액"].map(_format_market_cap_krw_jo_eok)
 
         col_cfg = {
-            "종가": st.column_config.NumberColumn(format="₩%d"),
-            "시가총액": st.column_config.NumberColumn(format="₩%d"),
+            "종목코드": st.column_config.TextColumn("종목코드", width="small"),
+            "종목명": st.column_config.TextColumn("종목명", width="medium"),
+            "종가": st.column_config.NumberColumn("종가", format="₩%d"),
+            "시가총액": st.column_config.TextColumn("시가총액"),
         }
-        if table_ret_col in formatted_df.columns:
-            col_cfg[table_ret_col] = st.column_config.NumberColumn(format="%.2f%%")
+        if sector_detail_ret_col in formatted_df.columns:
+            col_cfg[sector_detail_ret_col] = st.column_config.NumberColumn(
+                "YTD",
+                format="%.2f%%",
+            )
 
         st.dataframe(
             formatted_df,
             width="stretch",
-            hide_index=False,
+            hide_index=True,
             column_config=col_cfg,
         )
     else:
