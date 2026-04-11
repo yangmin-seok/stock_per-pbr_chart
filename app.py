@@ -4,7 +4,17 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pykrx import stock
 
-from src.data import get_target_date_range, fetch_ohlcv, fetch_fundamentals, fetch_market_cap, get_ticker_name, fetch_sector_classifications, fetch_ytd_returns, get_detailed_financials
+from src.data import (
+    get_target_date_range,
+    fetch_ohlcv,
+    fetch_fundamentals,
+    fetch_market_cap,
+    get_ticker_name,
+    fetch_sector_classifications,
+    fetch_multi_horizon_returns,
+    SECTOR_HEATMAP_RETURN_COLUMNS,
+    get_detailed_financials,
+)
 from src.analytics import process_ticker_data, calculate_bands
 from src.storage import is_update_needed, save_ticker_data, load_ticker_data, save_market_list, load_market_list, get_latest_market_date
 from src.macro import fetch_macro_data, MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS
@@ -252,21 +262,21 @@ elif menu_sel == "Market Sectors":
     def load_sector_and_ytd(market: str):
         target_date = get_latest_market_date()
         df = load_sector_ytd_data(market, target_date)
-        if not df.empty:
+        if not df.empty and set(SECTOR_HEATMAP_RETURN_COLUMNS).issubset(df.columns):
             return df
-            
-        with st.spinner(f"Loading Sector & YTD data for {market}..."):
-            sector_df = fetch_sector_classifications(target_date, market)
-            ytd_df = fetch_ytd_returns(target_date, market)
 
-            if not sector_df.empty and not ytd_df.empty:
-                # Merge logic
-                # ytd_df index is ticker. sector_df index is also ticker.
-                merged = sector_df.join(ytd_df[['등락률']], rsuffix='_YTD')
-                merged.rename(columns={'등락률_YTD': 'YTD(%)'}, inplace=True)
+        with st.spinner(f"Loading Sector & multi-period returns for {market}..."):
+            sector_df = fetch_sector_classifications(target_date, market)
+            ret_df = fetch_multi_horizon_returns(target_date, market)
+
+            if not sector_df.empty:
+                merged = sector_df.join(ret_df, how="left")
+                for c in SECTOR_HEATMAP_RETURN_COLUMNS:
+                    if c not in merged.columns:
+                        merged[c] = pd.NA
                 save_sector_ytd_data(market, merged, target_date)
                 return merged
-            return sector_df # fallback
+            return sector_df
 
 
     sector_data = load_sector_and_ytd(market_sel)
@@ -302,51 +312,96 @@ elif menu_sel == "Market Sectors":
         fig_pie.update_layout(template="plotly_dark", height=450, margin=dict(t=30, b=30, l=10, r=10))
         st.plotly_chart(fig_pie, width='stretch')
         
-        # 2. YTD Heatmap (Treemap)
-        st.subheader("🟩🟥 YTD Sector Heatmap (Treemap)")
-        st.markdown("전체 시장의 종목 시가총액(크기)과 연초 대비 수익률(색상)을 한눈에 파악하세요.")
-        
+        # 2. Multi-period sector heatmap (Treemap)
+        st.subheader("🟩🟥 Sector Heatmap (Treemap)")
+        period_labels = ("1일", "1개월", "3개월", "YTD")
+        period_to_col = {
+            "1일": "RET_1D",
+            "1개월": "RET_1M",
+            "3개월": "RET_3M",
+            "YTD": "YTD(%)",
+        }
+        period_to_colorbar = {
+            "1일": "1D_Color",
+            "1개월": "1M_Color",
+            "3개월": "3M_Color",
+            "YTD": "YTD_Color",
+        }
+        period_descriptions = {
+            "1일": "전일 대비",
+            "1개월": "1개월 전 대비",
+            "3개월": "3개월 전 대비",
+            "YTD": "연초 대비",
+        }
+
+        td_raw = get_latest_market_date()
+        td_fmt = f"{td_raw[:4]}.{td_raw[4:6]}.{td_raw[6:8]} 장마감"
+        row1, row2, row3 = st.columns([0.11, 0.62, 0.27])
+        with row1:
+            st.markdown("**변동률**")
+        with row2:
+            selected_period = st.radio(
+                "변동률 기간",
+                period_labels,
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+        with row3:
+            st.caption(td_fmt)
+
+        sel_col = period_to_col[selected_period]
+        st.markdown(
+            f"전체 시장의 종목 시가총액(크기)과 **{period_descriptions[selected_period]}** 수익률(색상)을 한눈에 파악하세요."
+        )
+
         heatmap_data = sector_data.copy()
         heatmap_data = heatmap_data[heatmap_data['시가총액'] > 0]
-        
-        if 'YTD(%)' in heatmap_data.columns:
-            heatmap_data['YTD(%)'] = heatmap_data['YTD(%)'].fillna(0)
-            # Clip extreme values for better color scaling visually
-            heatmap_data['YTD_Color'] = heatmap_data['YTD(%)'].clip(lower=-30, upper=30)
-            
-            # Custom Color Scale (Blue: -30%, Gray: 0%, Red: +30%)
+
+        colorbar_title = period_to_colorbar[selected_period]
+
+        if sel_col in heatmap_data.columns:
+            ret_series = pd.to_numeric(heatmap_data[sel_col], errors="coerce")
+            heatmap_data["_Heatmap_Color"] = ret_series.fillna(0).clip(lower=-30, upper=30)
+
             kor_scale = [
-                (0.0, '#2b64d1'), # Blue
-                (0.5, '#40444d'), # Dark Gray (near zero)
-                (1.0, '#f23a47')  # Red
+                (0.0, "#2b64d1"),
+                (0.5, "#40444d"),
+                (1.0, "#f23a47"),
             ]
-            
+
             fig_tree = px.treemap(
-                heatmap_data, 
-                path=[px.Constant(market_sel), '업종명', '종목명'], 
-                values='시가총액',
-                color='YTD_Color',
+                heatmap_data,
+                path=[px.Constant(market_sel), "업종명", "종목명"],
+                values="시가총액",
+                color="_Heatmap_Color",
                 color_continuous_scale=kor_scale,
                 color_continuous_midpoint=0,
-                hover_data=['YTD(%)', '종가']
+                hover_data=[sel_col, "종가"],
             )
-            # Add YTD percentage string into each box and adjust fonts
             fig_tree.update_traces(
                 texttemplate="<b>%{label}</b><br>%{customdata[0]:+.2f}%",
                 textposition="middle center",
                 textfont=dict(color="white", size=14),
-                hovertemplate='<b>%{label}</b><br>시가총액: ₩%{value:,.0f}<br>YTD: %{customdata[0]:+.2f}%<br>종가: ₩%{customdata[1]:,.0f}'
+                hovertemplate=(
+                    "<b>%{label}</b><br>시가총액: ₩%{value:,.0f}<br>"
+                    f"{selected_period}: %{{customdata[0]:+.2f}}%<br>종가: ₩%{{customdata[1]:,.0f}}"
+                ),
+            )
+            fig_tree.update_layout(
+                template="plotly_dark",
+                height=750,
+                margin=dict(t=30, b=30, l=10, r=10),
+                coloraxis_colorbar=dict(title=colorbar_title),
             )
         else:
-            # Fallback if YTD fails
             fig_tree = px.treemap(
-                heatmap_data, 
-                path=[px.Constant(market_sel), '업종명', '종목명'], 
-                values='시가총액'
+                heatmap_data,
+                path=[px.Constant(market_sel), "업종명", "종목명"],
+                values="시가총액",
             )
-            
-        fig_tree.update_layout(template="plotly_dark", height=750, margin=dict(t=30, b=30, l=10, r=10))
-        st.plotly_chart(fig_tree, width='stretch')
+            fig_tree.update_layout(template="plotly_dark", height=750, margin=dict(t=30, b=30, l=10, r=10))
+
+        st.plotly_chart(fig_tree, width="stretch")
         
         # 3. 섹터 선택 드롭다운 및 테이블
         st.divider()
@@ -362,23 +417,25 @@ elif menu_sel == "Market Sectors":
         sector_stocks = sector_data[sector_data['업종명'] == selected_sector]
         sector_stocks = sector_stocks.sort_values(by='시가총액', ascending=False)
         
-        # Select required columns
-        display_cols = ['종목명', '종가', 'YTD(%)', '시가총액']
-        if 'YTD(%)' not in sector_stocks.columns:
-            display_cols = ['종목명', '종가', '시가총액']
+        display_cols = ["종목명", "종가", "시가총액"]
+        table_ret_col = period_to_col[selected_period]
+        if table_ret_col in sector_stocks.columns:
+            display_cols.insert(2, table_ret_col)
 
-        # Format numeric values implicitly via column config
         formatted_df = sector_stocks[display_cols].copy()
-            
+
+        col_cfg = {
+            "종가": st.column_config.NumberColumn(format="₩%d"),
+            "시가총액": st.column_config.NumberColumn(format="₩%d"),
+        }
+        if table_ret_col in formatted_df.columns:
+            col_cfg[table_ret_col] = st.column_config.NumberColumn(format="%.2f%%")
+
         st.dataframe(
-            formatted_df, 
-            width='stretch', 
+            formatted_df,
+            width="stretch",
             hide_index=False,
-            column_config={
-                "종가": st.column_config.NumberColumn(format="₩%d"),
-                "시가총액": st.column_config.NumberColumn(format="₩%d"),
-                "YTD(%)": st.column_config.NumberColumn(format="%.2f%%")
-            }
+            column_config=col_cfg,
         )
     else:
         st.error(f"{market_sel} 시장의 섹터 데이터를 불러오지 못했습니다. 장 휴일이나 주말일 수 있습니다.")

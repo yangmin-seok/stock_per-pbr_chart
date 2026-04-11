@@ -11,7 +11,8 @@ from src.storage import (get_latest_market_date, is_update_needed,
     save_macro_data, load_macro_data,
     is_wisereport_financials_stale, save_wisereport_financials)
 from src.data import (get_target_date_range, fetch_ohlcv, fetch_fundamentals,
-    fetch_market_cap, fetch_sector_classifications, fetch_ytd_returns, fetch_tickers,
+    fetch_market_cap, fetch_sector_classifications, fetch_multi_horizon_returns,
+    SECTOR_HEATMAP_RETURN_COLUMNS, fetch_tickers,
     fetch_detailed_financials)
 from src.macro import MACRO_SYMBOLS, GLOBAL_INDEX_SYMBOLS, fetch_macro_data
 
@@ -55,19 +56,24 @@ def update_market_globals():
                 logger.error(f"Error fetching market cap for {market}: {e}")
             time.sleep(1)
         
-        # 2. Update Sector and YTD
+        # 2. Update Sector + multi-period returns (treemap)
         df_sector_ytd = load_sector_ytd_data(market, target_date)
-        if df_sector_ytd.empty:
-            logger.info(f"Updating {market} Sector/YTD for {target_date}")
+        needs_sector = df_sector_ytd.empty or not set(SECTOR_HEATMAP_RETURN_COLUMNS).issubset(
+            df_sector_ytd.columns
+        )
+        if needs_sector:
+            logger.info(f"Updating {market} sector / multi-period returns for {target_date}")
             try:
                 sector_df = fetch_sector_classifications(target_date, market)
-                ytd_df = fetch_ytd_returns(target_date, market)
-                if not sector_df.empty and not ytd_df.empty:
-                    merged = sector_df.join(ytd_df[['등락률']], rsuffix='_YTD')
-                    merged.rename(columns={'등락률_YTD': 'YTD(%)'}, inplace=True)
+                ret_df = fetch_multi_horizon_returns(target_date, market)
+                if not sector_df.empty:
+                    merged = sector_df.join(ret_df, how="left")
+                    for c in SECTOR_HEATMAP_RETURN_COLUMNS:
+                        if c not in merged.columns:
+                            merged[c] = pd.NA
                     save_sector_ytd_data(market, merged, target_date)
             except Exception as e:
-                logger.error(f"Error fetching sector/ytd for {market}: {e}")
+                logger.error(f"Error fetching sector / returns for {market}: {e}")
             time.sleep(1)
 
 def update_individual_tickers():

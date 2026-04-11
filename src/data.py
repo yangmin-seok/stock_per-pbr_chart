@@ -55,6 +55,80 @@ def fetch_ytd_returns(target_date: str, market="KOSPI"):
     time.sleep(0.5)
     return df
 
+
+# KRX 공통 영업일 프록시 (지수 API 대체)
+_KRX_CALENDAR_TICKER = "005930"
+
+
+def get_prev_krx_trading_day(target_date: str):
+    """target_date 직전 KRX 영업일(YYYYMMDD). 실패 시 None."""
+    try:
+        dt_end = pd.Timestamp(datetime.strptime(target_date, "%Y%m%d"))
+    except (TypeError, ValueError):
+        return None
+    start = (dt_end - pd.Timedelta(days=21)).strftime("%Y%m%d")
+    try:
+        cal = stock.get_market_ohlcv_by_date(start, target_date, _KRX_CALENDAR_TICKER)
+    except Exception:
+        return None
+    time.sleep(0.5)
+    if cal is None or cal.empty:
+        return None
+    idx = pd.DatetimeIndex(pd.to_datetime(cal.index)).tz_localize(None).normalize()
+    end_norm = dt_end.normalize()
+    valid = idx[idx <= end_norm]
+    if len(valid) < 2:
+        return None
+    return valid[-2].strftime("%Y%m%d")
+
+
+SECTOR_HEATMAP_RETURN_COLUMNS = ("RET_1D", "RET_1M", "RET_3M", "YTD(%)")
+
+
+def fetch_multi_horizon_returns(target_date: str, market: str = "KOSPI") -> pd.DataFrame:
+    """티커 인덱스. 컬럼: RET_1D, RET_1M, RET_3M, YTD(%) (등락률 %, 부분 실패 시 NaN)."""
+    series_parts = []
+    dt = pd.Timestamp(datetime.strptime(target_date, "%Y%m%d"))
+
+    prev = get_prev_krx_trading_day(target_date)
+    if prev and prev != target_date:
+        try:
+            d = stock.get_market_price_change_by_ticker(prev, target_date, market=market)
+            time.sleep(0.5)
+            if not d.empty and "등락률" in d.columns:
+                series_parts.append(d["등락률"].rename("RET_1D"))
+        except Exception:
+            pass
+
+    for col_name, months in (("RET_1M", 1), ("RET_3M", 3)):
+        start = (dt - pd.DateOffset(months=months)).strftime("%Y%m%d")
+        try:
+            d = stock.get_market_price_change_by_ticker(start, target_date, market=market)
+            time.sleep(0.5)
+            if not d.empty and "등락률" in d.columns:
+                series_parts.append(d["등락률"].rename(col_name))
+        except Exception:
+            pass
+
+    try:
+        d = stock.get_market_price_change_by_ticker(
+            f"{target_date[:4]}0102", target_date, market=market
+        )
+        time.sleep(0.5)
+        if not d.empty and "등락률" in d.columns:
+            series_parts.append(d["등락률"].rename("YTD(%)"))
+    except Exception:
+        pass
+
+    if not series_parts:
+        return pd.DataFrame(columns=list(SECTOR_HEATMAP_RETURN_COLUMNS))
+
+    out = pd.concat(series_parts, axis=1)
+    for c in SECTOR_HEATMAP_RETURN_COLUMNS:
+        if c not in out.columns:
+            out[c] = pd.NA
+    return out[list(SECTOR_HEATMAP_RETURN_COLUMNS)]
+
 def fetch_detailed_financials(ticker: str) -> pd.DataFrame:
     """FnGuide Ajax 엔드포인트를 우회하여 상세 재무제표 테이블을 가져옵니다."""
     url = f'https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd={ticker}'
